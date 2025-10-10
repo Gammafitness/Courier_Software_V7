@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gamma Logistics — Courier Suite</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-dark text-light">
+<nav class="navbar navbar-dark">
+  <div class="container-fluid justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/logo.png" class="logo-sm" alt="Gamma">
+      <span class="navbar-brand fw-bold">Gamma Logistics — Courier Suite</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/recent">🧾 Recent Pincode Checks</a>
+      <a class="btn btn-outline-warning btn-sm" target="_blank" href="/manage">⚙️ Manage Couriers</a>
+      <a href="/logout" class="btn btn-sm btn-outline-danger">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div class="card glass shadow-lg">
+    <div class="card-body">
+      <h4 class="mb-3">Courier Recommendation</h4>
+      <form id="recoForm" class="row g-3">
+        <div class="col-md-6"><label class="form-label">Pincodes</label><input class="form-control" id="pincodes" placeholder="110011,144002"></div>
+        <div class="col-md-6"><label class="form-label">Weights (kg)</label><input class="form-control" id="weights" placeholder="10,20"></div>
+        <div class="col-md-6"><label class="form-label">Volumetric Weights</label><input class="form-control" id="volweights" placeholder="Optional"></div>
+        <div class="col-md-6"><label class="form-label">Declared Value</label><input class="form-control" id="declared" type="number" value="0"></div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-accent" type="submit">Get Recommendations</button>
+          <button class="btn btn-outline-light" id="resetReco" type="button">Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="resultsArea" class="mt-4"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const $ = (q, el=document) => el.querySelector(q);
+
+$("#resetReco").addEventListener("click", ()=>{
+  $("#recoForm").reset();
+  $("#resultsArea").innerHTML = "";
+});
+
+$("#recoForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const area = $("#resultsArea"); area.innerHTML = "";
+
+  const pincodes = $("#pincodes").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const weights  = $("#weights").value.split(",").map(s=>Number(s.trim())).filter(n=>!isNaN(n));
+  const vol      = $("#volweights").value ? $("#volweights").value.split(",").map(s=>Number(s.trim())) : [];
+  const declared = Number($("#declared").value || 0);
+
+  const res = await fetch("/api/recommend", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({pincodes, weights, volumetric_weights: vol, declared_value: declared})
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    area.innerHTML = `<div class="alert alert-danger">Failed: ${data.error || 'Unknown error'}</div>`;
+    return;
+  }
+
+  // Group rows by (pincode, weight)
+  const groups = {};
+  for (const r of data.results) {
+    const key = `${r.pincode}|${r.weight}`;
+    (groups[key] = groups[key] || []).push(r);
+  }
+
+  if (Object.keys(groups).length === 0) {
+    area.innerHTML = `<div class="alert alert-warning">No results found.</div>`;
+    return;
+  }
+
+  for (const [key, items] of Object.entries(groups)) {
+    const [pin, wt] = key.split("|");
+    const card = document.createElement("div");
+    card.className = "card glass shadow mt-3";
+    card.innerHTML = `
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div><span class="badge bg-warning text-dark me-2">Pincode</span><strong>${pin}</strong>
+        <span class="ms-3 text-secondary">Weight: ${wt} kg</span></div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-dark table-hover align-middle">
+            <thead>
+              <tr>
+                <th>Courier</th><th>Status</th><th>Zone</th><th>State</th><th>Location</th>
+                <th class="text-end">Freight</th>
+                <th class="text-end">Fuel</th>
+                <th class="text-end">Insurance</th>
+                <th class="text-end">ODA</th>
+                <th class="text-end">Docket</th>
+                <th class="text-end">Subtotal</th>
+                <th class="text-end">GST</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>`;
+    const tbody = card.querySelector("tbody");
+
+    items.sort((a,b) => (a.status==='NOT FOUND') - (b.status==='NOT FOUND') || (a.total||1e12) - (b.total||1e12));
+    for (const r of items) {
+      const tr = document.createElement("tr");
+      if (r.status === "NOT FOUND") tr.classList.add("table-danger");
+      tr.innerHTML = `
+        <td>${r.courier||""}</td>
+        <td>${r.status||""}</td>
+        <td>${r.zone||""}</td>
+        <td>${r.state||""}</td>
+        <td>${r.location||""}</td>
+        <td class="text-end">₹${(r.freight??0).toFixed(2)}</td>
+        <td class="text-end">₹${(r.fuel??0).toFixed(2)}</td>
+        <td class="text-end">₹${(r.insurance??0).toFixed(2)}</td>
+        <td class="text-end">₹${(r.oda??0).toFixed(2)}</td>
+        <td class="text-end">₹${(r.docket??0).toFixed(2)}</td>
+        <td class="text-end fw-semibold">₹${(r.subtotal??0).toFixed(2)}</td>
+        <td class="text-end">₹${(r.gst??0).toFixed(2)}</td>
+        <td class="text-end fw-bold">₹${(r.total??0).toFixed(2)}</td>`;
+      tbody.appendChild(tr);
+    }
+    area.appendChild(card);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Poppins:wght@500;600&display=swap');
+:root{--accent:#ffa63b;--accent2:#ff7b00;--glass:rgba(255,255,255,.06);--bd:rgba(255,255,255,.12)}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:#0b0b0b;color:#e9e9e9;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+h1,h2,h3,h4,h5{font-family:Poppins,Inter,system-ui;font-weight:600}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.navbar{background:#0a0a0a!important;border-bottom:1px solid rgba(255,255,255,.12)!important}
+.logo-sm{height:36px}.logo-lg{height:64px}
+.glass{background:var(--glass)!important;border:1px solid var(--bd);backdrop-filter:blur(6px);border-radius:16px}
+.btn-accent{background:linear-gradient(90deg,var(--accent2),var(--accent));border:none;color:#1a1a1a;font-weight:700}
+.btn-accent:hover{filter:brightness(1.05)}
+.text-accent{color:var(--accent)}
+.table thead th{background:#111;border-bottom:1px solid rgba(255,255,255,.1)}
+.table-hover tbody tr:hover{background:#121212}
+input.form-control,select.form-select{background:#101010;color:#e9e9e9;border:1px solid #222}
+input.form-control:focus,select.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 .12rem rgba(255,166,59,.25)}
+.footer{position:relative;margin-top:48px;text-align:center;color:#cfcfcf;font-size:.9rem}
+.footer .goldline{height:2px;background:linear-gradient(90deg,transparent,rgba(255,166,59,.85),transparent);box-shadow:0 0 8px rgba(255,166,59,.75);margin-bottom:10px;animation:glow 5s ease-in-out infinite}
+@keyframes glow{0%,100%{opacity:.45}50%{opacity:1}}
+.toast-container{position:fixed;top:16px;right:16px;z-index:1080}
+.toast{background:#111;border:1px solid rgba(255,255,255,.12);color:#eee}
+.toast .toast-header{background:#141414;border-bottom:1px solid rgba(255,255,255,.12);color:#ddd}

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manage Couriers — Gamma Logistics</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-dark text-light">
+<nav class="navbar navbar-dark">
+  <div class="container-fluid justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/logo.png" class="logo-sm" alt="Gamma">
+      <span class="navbar-brand fw-bold">Manage Couriers</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/dashboard">← Back</a>
+      <a href="/logout" class="btn btn-outline-danger btn-sm">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div class="card glass shadow-lg">
+    <div class="card-body">
+      <h4 class="mb-3">Couriers in Database</h4>
+      <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle" id="courierTable">
+          <thead>
+            <tr>
+              <th>Name</th><th>Fuel %</th><th>Insurance %</th>
+              <th>Insurance ₹</th><th>Docket</th><th>ODA Type</th>
+              <th>ODA ₹</th><th>GST %</th><th>Min ₹</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1"><div class="modal-dialog modal-lg">
+  <div class="modal-content bg-dark text-light border-secondary">
+    <div class="modal-header"><h5 class="modal-title">Edit Courier</h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <form id="editForm" class="row g-3">
+        <input type="hidden" name="name" id="editName">
+        <div class="col-md-6">
+          <label class="form-label">Rates (JSON)</label>
+          <textarea class="form-control" id="editRates" rows="2"></textarea>
+          <div class="form-text text-muted small">Example: {"A":25,"B":30,"C":35}</div>
+        </div>
+        <div class="col-md-3"><label class="form-label">Fuel %</label><input class="form-control" id="editFuel"></div>
+        <div class="col-md-3"><label class="form-label">Insurance %</label><input class="form-control" id="editInsPct"></div>
+        <div class="col-md-3"><label class="form-label">Insurance ₹</label><input class="form-control" id="editInsFlat"></div>
+        <div class="col-md-3"><label class="form-label">Docket</label><input class="form-control" id="editDocket"></div>
+        <div class="col-md-3"><label class="form-label">ODA Type</label>
+          <select class="form-select" id="editOdaType">
+            <option value="Fixed">Fixed</option>
+            <option value="Special">Special (Bluedart)</option>
+          </select>
+        </div>
+        <div class="col-md-3"><label class="form-label">ODA ₹</label><input class="form-control" id="editOdaFixed"></div>
+        <div class="col-md-3"><label class="form-label">GST %</label><input class="form-control" id="editGst"></div>
+        <div class="col-md-3"><label class="form-label">Min ₹</label><input class="form-control" id="editMin"></div>
+        <div class="col-md-12"><label class="form-label">Replace Excel (optional)</label>
+          <input class="form-control" type="file" id="editFile" accept=".xlsx">
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-success" type="submit">Save Changes</button>
+          <button class="btn btn-outline-light" type="button" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </form>
+      <div id="editMsg" class="mt-2 small text-info"></div>
+    </div>
+  </div>
+</div></div>
+
+<div class="footer">
+  <div class="goldline"></div>
+  <div>Powered by <span class="text-accent">Gamma Fitness Logistics Suite</span></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+async function loadCouriers(){
+  const res = await fetch('/api/couriers');
+  const list = await res.json();
+  const tbody = document.querySelector('#courierTable tbody');
+  tbody.innerHTML='';
+  for(const c of list){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${c.name}</td>
+      <td>${c.fuel_pct}</td>
+      <td>${c.insurance_pct}</td>
+      <td>${c.insurance_flat}</td>
+      <td>${c.docket}</td>
+      <td>${c.oda_type}</td>
+      <td>${c.oda_fixed}</td>
+      <td>${c.gst_pct}</td>
+      <td>${c.min_charge}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-warning me-1" onclick="openEdit('${c.name}')">Edit</button>
+        <button class="btn btn-sm btn-outline-danger me-1" onclick="delCourier('${c.name}')">Delete</button>
+        <a href="/api/courier/download/${c.name}" class="btn btn-sm btn-outline-secondary">Excel</a>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+}
+async function openEdit(name){
+  const res = await fetch('/api/couriers');
+  const data = await res.json();
+  const c = data.find(x=>x.name===name);
+  if(!c) return;
+  document.getElementById('editName').value=c.name;
+  document.getElementById('editRates').value=JSON.stringify(c.rates,null,2);
+  document.getElementById('editFuel').value=c.fuel_pct;
+  document.getElementById('editInsPct').value=c.insurance_pct;
+  document.getElementById('editInsFlat').value=c.insurance_flat;
+  document.getElementById('editDocket').value=c.docket;
+  document.getElementById('editOdaType').value=c.oda_type;
+  document.getElementById('editOdaFixed').value=c.oda_fixed;
+  document.getElementById('editGst').value=c.gst_pct;
+  document.getElementById('editMin').value=c.min_charge;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+document.getElementById('editForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const fd=new FormData();
+  fd.append('name',document.getElementById('editName').value);
+  fd.append('rates',document.getElementById('editRates').value);
+  fd.append('fuel_pct',document.getElementById('editFuel').value);
+  fd.append('insurance_pct',document.getElementById('editInsPct').value);
+  fd.append('insurance_flat',document.getElementById('editInsFlat').value);
+  fd.append('docket',document.getElementById('editDocket').value);
+  fd.append('oda_type',document.getElementById('editOdaType').value);
+  fd.append('oda_fixed',document.getElementById('editOdaFixed').value);
+  fd.append('gst_pct',document.getElementById('editGst').value);
+  fd.append('min_charge',document.getElementById('editMin').value);
+  const file=document.getElementById('editFile').files[0];
+  if(file) fd.append('file',file);
+  const res=await fetch('/api/courier/update',{method:'POST',body:fd});
+  const data=await res.json();
+  document.getElementById('editMsg').textContent=res.ok?'Updated successfully':data.error||'Error';
+  if(res.ok){ loadCouriers(); setTimeout(()=>bootstrap.Modal.getInstance(document.getElementById('editModal')).hide(),1200);}
+});
+async function delCourier(name){
+  if(!confirm('Delete '+name+' courier?'))return;
+  const res=await fetch('/api/courier/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  const data=await res.json();
+  alert(data.message||'Deleted');
+  loadCouriers();
+}
+loadCouriers();
+</script>
+</body>
+</html>

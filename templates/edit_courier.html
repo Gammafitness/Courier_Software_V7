@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit Courier • Gamma Logistics</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-dark text-light">
+<nav class="navbar navbar-dark">
+  <div class="container-fluid justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/logo.png" class="logo-sm" alt="Gamma">
+      <span class="navbar-brand fw-bold">Gamma Logistics — Edit Courier</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/manage">⟵ Back to Manage</a>
+      <a class="btn btn-outline-danger btn-sm" href="/logout">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div class="card glass shadow">
+    <div class="card-body">
+      <h4 class="mb-3">Edit Courier</h4>
+
+      <form id="f" class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Courier Name</label>
+          <input class="form-control" id="name" name="name" readonly>
+          <div class="form-text text-secondary">Name is the unique key and cannot be changed.</div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Replace Pincode Excel (.xlsx)</label>
+          <input class="form-control" type="file" name="file" accept=".xlsx">
+          <div class="form-text text-secondary">Leave empty to keep the current file.</div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Rates (JSON)</label>
+          <input class="form-control" id="rates_json" name="rates_json" placeholder='{"A":25,"B":30,"C":35}' required>
+          <div class="form-text text-secondary">Use JSON like {"A":25,"B":30}</div>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Docket ₹</label>
+          <input class="form-control" id="docket" name="docket" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Fuel %</label>
+          <input class="form-control" id="fuel_pct" name="fuel_pct" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Insurance %</label>
+          <input class="form-control" id="insurance_pct" name="insurance_pct" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Insurance Flat ₹</label>
+          <input class="form-control" id="insurance_flat" name="insurance_flat" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">ODA Type</label>
+          <select class="form-select" id="oda_type" name="oda_type">
+            <option value="Fixed">Fixed</option>
+            <option value="Special">Special (Bluedart)</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">ODA (Fixed) ₹</label>
+          <input class="form-control" id="oda_fixed" name="oda_fixed" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">GST %</label>
+          <input class="form-control" id="gst_pct" name="gst_pct" type="number" step="0.01" value="18">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Min Charge ₹</label>
+          <input class="form-control" id="min_charge" name="min_charge" type="number" step="0.01" value="0">
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-accent" type="submit">Save Changes</button>
+          <a class="btn btn-outline-light" href="/manage">Cancel</a>
+        </div>
+      </form>
+
+      <div id="msg" class="mt-3 small"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const msg = document.getElementById('msg');
+const params = new URLSearchParams(location.search);
+const courierName = location.pathname.split('/').pop(); // /edit_courier/<name>
+
+async function loadCourier() {
+  const res = await fetch('/api/couriers');
+  const data = await res.json();
+  const c = (data||[]).find(x => x.name === decodeURIComponent(courierName));
+  if(!c){ msg.innerHTML = `<div class="alert alert-danger">Courier not found.</div>`; return; }
+
+  document.getElementById('name').value = c.name;
+  document.getElementById('rates_json').value = JSON.stringify(c.rates || {});
+  document.getElementById('docket').value = c.docket ?? 0;
+  document.getElementById('fuel_pct').value = c.fuel_pct ?? 0;
+  document.getElementById('insurance_pct').value = c.insurance_pct ?? 0;
+  document.getElementById('insurance_flat').value = c.insurance_flat ?? 0;
+  document.getElementById('oda_type').value = c.oda_type || 'Fixed';
+  document.getElementById('oda_fixed').value = c.oda_fixed ?? 0;
+  document.getElementById('gst_pct').value = c.gst_pct ?? 18;
+  document.getElementById('min_charge').value = c.min_charge ?? 0;
+}
+loadCourier();
+
+document.getElementById('f').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  // backend expects 'rates'
+  fd.set('rates', fd.get('rates_json'));
+  fd.delete('rates_json');
+
+  const res = await fetch('/api/couriers/update/'+encodeURIComponent(courierName), { method:'POST', body: fd });
+  const data = await res.json();
+  if(!res.ok){ msg.innerHTML = `<div class="alert alert-danger">${data.error || 'Failed to update.'}</div>`; return; }
+  msg.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+  setTimeout(()=>{ window.location.href='/manage'; }, 900);
+});
+</script>
+</body>
+</html>
