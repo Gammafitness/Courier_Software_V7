@@ -97,7 +97,7 @@ $("#recoForm").addEventListener("submit", async (e)=>{
           <table class="table table-dark table-hover align-middle">
             <thead>
               <tr>
-                <th>Courier</th><th>Status</th><th>Zone</th><th>State</th><th>Location</th>
+                <th>Courier</th><th>Status</th><th>Zone</th><th>Zone Rate</th><th>ODA Distance</th><th>State</th><th>Location</th>
                 <th class="text-end">Freight</th>
                 <th class="text-end">Fuel</th>
                 <th class="text-end">Insurance</th>
@@ -121,7 +121,7 @@ $("#recoForm").addEventListener("submit", async (e)=>{
       tr.innerHTML = `
         <td>${r.courier||""}</td>
         <td>${r.status||""}</td>
-        <td>${r.zone||""}</td>
+        <td>${r.zone||""}</td><td>${(r.zone_rate??'-')}</td><td>${(r.oda_distance??'-')}</td>
         <td>${r.state||""}</td>
         <td>${r.location||""}</td>
         <td class="text-end">₹${(r.freight??0).toFixed(2)}</td>

@@ -5,6 +5,38 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = "gamma_secret_key_v421"
 
+
+
+# --- Bluedart ODA coded metrics (distance-weight matrix) ---
+def get_bluedart_oda_charge(distance_km: float, weight_kg: float) -> float:
+    ODA_MATRIX = [
+        (20, 50,  [(100, 550),  (250, 990),  (500, 1100), (1000, 1375)]),
+        (51, 100, [(100, 825),  (250, 1210), (500, 1375), (1000, 1650)]),
+        (101,150, [(100,1100),  (250,1650),  (500,1925),  (1000,2200)]),
+        (151,200, [(100,1375),  (250,1925),  (500,2200),  (1000,2475)]),
+        (201,250, [(100,1650),  (250,2200),  (500,2750),  (1000,3300)]),
+        (251,300, [(100,1925),  (250,2500),  (500,3150),  (1000,3800)]),
+        (301,350, [(100,2200),  (250,2800),  (500,3550),  (1000,4300)]),
+        (351,400, [(100,2475),  (250,3100),  (500,3950),  (1000,4800)]),
+    ]
+    if distance_km is None or distance_km <= 0:
+        return 0.0
+    # find distance band
+    for dmin, dmax, tiers in ODA_MATRIX:
+        if dmin <= distance_km <= dmax:
+            # pick first tier with max_weight >= weight_kg
+            for max_wt, charge in tiers:
+                if weight_kg <= max_wt:
+                    return float(charge)
+            # if heavier than all, use last tier
+            return float(tiers[-1][1])
+    # if beyond last band, extrapolate with last band tiers
+    tiers = ODA_MATRIX[-1][2]
+    for max_wt, charge in tiers:
+        if weight_kg <= max_wt:
+            return float(charge)
+    return float(tiers[-1][1])
+
 # Paths
 DB_PATH    = os.path.join(app.root_path, "couriers.db")
 UPLOAD_DIR = os.path.join(app.root_path, "uploads")
@@ -89,8 +121,10 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def parse_range(text):
-    m = re.match(r"\s*(\d+)\s*-\s*(\d+)\s*", str(text))
-    if not m: return None
+    m = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)", str(text))
+    if not m:
+        return None
+    return float(m.group(1)), float(m.group(2))
     return float(m.group(1)), float(m.group(2))
 
 def select_band(value, bands):
@@ -105,23 +139,55 @@ def select_band(value, bands):
     return None
 
 def load_bluedart_oda_table():
-    for fname in ["Bluedart ODA Charges copy.xlsx","Bluedart ODA Charges.xlsx"]:
+    # Try to read Bluedart ODA matrix from uploads. Accept multiple filenames and flexible headers.
+    candidates = [
+        "Bluedart ODA Charges copy.xlsx",
+        "Bluedart ODA Charges.xlsx",
+        "Bluedart_ODA_Charges.xlsx",
+        "Bluedart_ODA.xlsx"
+    ]
+    for fname in candidates:
         path = os.path.join(UPLOAD_DIR, fname)
-        if os.path.exists(path):
-            df = pd.read_excel(path)
-            df = df.rename(columns={df.columns[0]:"distance_band"})
-            mask = df["distance_band"].astype(str).str.contains(r"\d+\s*-\s*\d+", regex=True)
-            df = df[mask].copy()
-            # normalize weight band headers: '0-100 Kgs' -> '0-100'
-            newcols = {}
-            for c in df.columns[1:]:
-                m = re.search(r"(\d+\s*-\s*\d+)", str(c))
-                newcols[c] = (m.group(1).replace(" ","") if m else str(c).strip())
-            df = df.rename(columns=newcols)
-            for c in df.columns[1:]:
-                df[c] = pd.to_numeric(df[c], errors="coerce")
-            print(f"[INFO] Loaded Bluedart ODA matrix: rows={len(df)}, weight_bands={list(df.columns[1:])}")
-            return df.reset_index(drop=True)
+        if not os.path.exists(path):
+            continue
+        try:
+            raw = pd.read_excel(path, header=0)
+        except Exception as e:
+            print(f"[ERROR] Reading ODA matrix {fname}: {e}")
+            continue
+
+        df = raw.copy()
+
+        # If headers are "Unnamed", assume first row holds weight bands. Promote first row to column headers.
+        if all(str(c).startswith("Unnamed") for c in df.columns[1:]) and df.shape[0] >= 1:
+            header_row = df.iloc[0].tolist()
+            # Keep the first column as is (distance label header)
+            new_cols = [str(df.columns[0])] + [str(x) for x in header_row[1:]]
+            df.columns = new_cols
+            df = df.iloc[1:].reset_index(drop=True)
+
+        # Standardize first column to "distance_band"
+        df = df.rename(columns={df.columns[0]: "distance_band"})
+
+        # Keep only rows that look like "20-50", "51 - 100", etc in the distance cell.
+        mask = df["distance_band"].astype(str).str.contains(r"\d+\s*-\s*\d+")
+        df = df[mask].copy()
+
+        # Normalize weight band column names, e.g., "0-100 Kgs" -> "0-100"
+        newcols = {}
+        for c in df.columns[1:]:
+            m = re.search(r"(\d+\s*-\s*\d+)", str(c))
+            newcols[c] = (m.group(1).replace(" ", "") if m else str(c).strip())
+        df = df.rename(columns=newcols)
+
+        # Coerce values to numeric
+        for c in df.columns[1:]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        # Also normalize distance_band to keep the label text intact; selection uses parse_range.
+        print(f"[INFO] Loaded Bluedart ODA matrix from {fname}: rows={len(df)}, weight_bands={list(df.columns[1:])}")
+        return df.reset_index(drop=True)
+
     print("[WARN] Bluedart ODA matrix not found in /uploads")
     return None
 
@@ -202,6 +268,9 @@ def bluedart_special_oda(pincode: str, weight: float, df: pd.DataFrame) -> float
     except Exception:
         return 0.0
 
+
+from pricing_engines import get_engine
+
 def calc_cost(cfg, pincode, actual_weight, vol_weight=None, declared_value=0.0):
     df = cfg["df"]
     row = df[df.get("pincode")==str(pincode)]
@@ -213,6 +282,39 @@ def calc_cost(cfg, pincode, actual_weight, vol_weight=None, declared_value=0.0):
     if row.empty:
         result["reason"] = "Pincode not found"
         return result
+
+    r = row.iloc[0]
+    result["state"]    = str(r.get("state",""))
+    result["location"] = str(r.get("location",""))
+    status = str(r.get("status","")).upper()
+    zone   = str(r.get("zone","")).upper()
+    result["status"] = status
+    result["zone"]   = zone
+
+    used_weight = max(float(actual_weight), float(vol_weight or 0))
+
+    # Delegate to plug-in engine
+    engine = get_engine(cfg["name"])
+    shared = {"bluedart_special_oda": bluedart_special_oda if "bluedart" in cfg["name"].lower() else None,
+              "df": df}
+    comp = engine.quote(cfg, str(pincode), r, used_weight, float(declared_value or 0), shared)
+
+    if comp.get("reason","OK") != "OK":
+        result["reason"] = comp.get("reason","Unknown")
+        return result
+
+    result.update({
+        "freight": round(comp["freight"],2),
+        "fuel": round(comp["fuel"],2),
+        "insurance": round(comp["insurance"],2),
+        "oda": round(comp["oda"],2),
+        "docket": round(comp["docket"],2),
+        "subtotal": round(comp["subtotal"],2),
+        "gst": round(comp["gst"],2),
+        "total": round(comp["total"],2),
+        "reason": "OK"
+    })
+    return result
 
     r = row.iloc[0]
     result["state"]    = str(r.get("state",""))
@@ -235,7 +337,7 @@ def calc_cost(cfg, pincode, actual_weight, vol_weight=None, declared_value=0.0):
     docket = float(cfg.get("docket", 0))
 
     oda = 0.0
-    if (cfg.get("oda_type") or "Fixed") == "Special" and cfg["name"].lower() == "bluedart":
+    if (cfg.get("oda_type","Fixed").lower().startswith("special")) and cfg["name"].lower() == "bluedart":
         oda = bluedart_special_oda(str(pincode), used_weight, df)
     else:
         if "ODA" in status or "EDL" in status:
@@ -305,35 +407,98 @@ def edit_courier_page(name):
     return render_template('edit_courier.html')
 
 # ====================== APIs ======================
-@app.route('/api/recommend', methods=['POST'])
-def recommend():
-    global last_results_df
-    if 'user' not in session: return jsonify({"success": False, "error":"Unauthorized"}), 401
 
-    data = request.get_json(silent=True) or {}
-    pincodes   = data.get("pincodes", [])
-    weights    = data.get("weights", [])
-    volweights = data.get("volumetric_weights", [])
-    declared   = float(data.get("declared_value", 0))
+@app.route("/api/recommend", methods=["POST"])
+def api_recommend():
+    if 'user' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        data = request.get_json(force=True)
+        pincodes = data.get("pincodes", [])
+        weights = data.get("weights", [])
+        volweights = data.get("volumetric_weights", [])
+        declared_value = float(data.get("declared_value", 0) or 0)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Invalid payload: {e}"}), 400
 
     results = []
-    for i,(p,w) in enumerate(zip(pincodes, weights)):
-        vw = volweights[i] if i < len(volweights) else 0
-        per_pin = []
-        for _, cfg in couriers.items():
-            per_pin.append(calc_cost(cfg, str(p), float(w), float(vw or 0), declared))
-        results.extend(per_pin)
 
-        valids = [r for r in per_pin if r.get("status")!="NOT FOUND" and r.get("total",0)>0]
-        if valids:
-            best = sorted(valids, key=lambda x: x["total"])[0]
-            conn=sqlite3.connect(DB_PATH); cur=conn.cursor()
-            cur.execute("INSERT INTO recent_searches(checked_at,pincode,courier,weight,total) VALUES(?,?,?,?,?)",
-                        (datetime.datetime.now().strftime('%d %b %Y %H:%M'), str(p), best['courier'], float(w), float(best['total'])))
-            cur.execute("DELETE FROM recent_searches WHERE id NOT IN (SELECT id FROM recent_searches ORDER BY id DESC LIMIT 20)")
-            conn.commit(); conn.close()
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT name, rates, docket, fuel_pct, insurance_pct, insurance_flat, oda_type, oda_fixed, gst_pct, min_charge, file_path FROM couriers")
+    couriers = cur.fetchall()
+    conn.close()
 
-    last_results_df = pd.DataFrame(results) if results else pd.DataFrame()
+    for courier in couriers:
+        (
+            name, rates_json, docket, fuel_pct, insurance_pct, insurance_flat,
+            oda_type, oda_fixed, gst_pct, min_charge, file_path
+        ) = courier
+
+        rates = json.loads(rates_json or "{}")
+        excel_path = file_path or os.path.join(UPLOAD_DIR, f"{name}.xlsx")
+
+        df = None
+        if os.path.exists(excel_path):
+            try:
+                df = pd.read_excel(excel_path)
+                df = normalize_columns(df)
+            except Exception as e:
+                print(f"Error reading {excel_path}: {e}")
+                df = None
+
+        for i, pin in enumerate(pincodes):
+            w = float(weights[i]) if i < len(weights) else 0.0
+            vol = float(volweights[i]) if i < len(volweights) else 0.0
+            eff_weight = max(w, vol)
+
+            zone = status = state = location = None
+            oda_distance = None
+            zone_rate = 0.0
+
+            if df is not None:
+                match = df[df["pincode"].astype(str) == str(pin)]
+                if not match.empty:
+                    row = match.iloc[0]
+                    zone = row.get("zone")
+                    status = str(row.get("status", "")).upper()
+                    state = row.get("state")
+                    location = row.get("location")
+                    if status == "ODA":
+                        oda_distance = float(row.get("oda_distance", 0) or 0)
+                    if zone and isinstance(rates, dict):
+                        zone_rate = float(rates.get(zone, 0) or 0)
+
+            # Cost calculation
+            base = zone_rate * eff_weight
+            fuel = base * (float(fuel_pct) / 100)
+            insurance = (base * (float(insurance_pct) / 100)) + float(insurance_flat)
+            docket_chg = float(docket)
+            oda_chg = (get_bluedart_oda_charge(oda_distance, eff_weight) if name.lower()=="bluedart" and status=="ODA" else (float(oda_fixed) if status=="ODA" else 0))
+            subtotal = base + fuel + insurance + docket_chg + oda_chg
+            gst = subtotal * (float(gst_pct) / 100)
+            total = subtotal + gst
+
+            results.append({
+                "pincode": pin,
+                "courier": name,
+                "status": status or "OK",
+                "zone": zone,
+                "state": state,
+                "location": location,
+                "zone_rate": zone_rate,
+                "oda_distance": oda_distance,
+                "freight": base,
+                "fuel": fuel,
+                "insurance": insurance,
+                "oda": oda_chg,
+                "docket": docket_chg,
+                "subtotal": subtotal,
+                "gst": gst,
+                "total": total,
+                "weight": eff_weight
+            })
+
     return jsonify({"success": True, "results": results})
 
 @app.route('/api/recent')
