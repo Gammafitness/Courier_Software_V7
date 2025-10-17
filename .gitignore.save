@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db-journal
+.env
+venv/
+.env/
+*.sqlite
+*.db
+
+# macOS
+.DS_Store
+
+# Uploads / temp files
+uploads/
+*.xlsx
+*.xls
+*.csv
+
+

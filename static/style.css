@@ -23,3 +23,32 @@ input.form-control:focus,select.form-select:focus{border-color:var(--accent);box
 .toast-container{position:fixed;top:16px;right:16px;z-index:1080}
 .toast{background:#111;border:1px solid rgba(255,255,255,.12);color:#eee}
 .toast .toast-header{background:#141414;border-bottom:1px solid rgba(255,255,255,.12);color:#ddd}
+
+/* === Loading overlay (added) === */
+.gl-loading-overlay{
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: rgba(0,0,0,0.55);
+  z-index: 9999;
+  backdrop-filter: blur(3px);
+}
+.gl-spinner{
+  width: 56px;
+  height: 56px;
+  border: 5px solid rgba(255,255,255,0.25);
+  border-top: 5px solid var(--accent, #ff8800);
+  border-radius: 50%;
+  animation: gl-spin 0.9s linear infinite;
+  margin-bottom: 10px;
+}
+.gl-loading-text{
+  color: var(--text, #fff);
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+@keyframes gl-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+
